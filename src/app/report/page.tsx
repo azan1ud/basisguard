@@ -1,20 +1,15 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect, Suspense } from "react";
 import Link from "next/link";
+import { useSearchParams } from "next/navigation";
 import StepIndicator from "@/components/ui/StepIndicator";
+import { useApp } from "@/lib/context";
+import { generateForm8949, generateDiscrepancyReport } from "@/lib/formGenerator";
 
 // ---------------------------------------------------------------------------
-// Mock data
+// Helpers
 // ---------------------------------------------------------------------------
-
-const reportData = {
-  taxYear: 2025,
-  transactionCount: 47,
-  mismatchCount: 11,
-  savings: 48_070,
-  generatedAt: "2026-03-15T14:30:00Z",
-};
 
 function formatUsd(n: number): string {
   return n.toLocaleString("en-US", {
@@ -23,6 +18,25 @@ function formatUsd(n: number): string {
     minimumFractionDigits: 0,
     maximumFractionDigits: 0,
   });
+}
+
+function formatDate(d: Date | string): string {
+  const date = new Date(d);
+  if (isNaN(date.getTime())) return "N/A";
+  return date.toISOString().slice(0, 10);
+}
+
+/** Trigger a browser download from raw bytes or a string. */
+function triggerDownload(data: BlobPart, filename: string, mimeType: string) {
+  const blob = new Blob([data], { type: mimeType });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
 }
 
 // ---------------------------------------------------------------------------
@@ -36,6 +50,7 @@ function DownloadCard({
   buttonLabel,
   fileType,
   onDownload,
+  loading,
 }: {
   title: string;
   description: string;
@@ -43,6 +58,7 @@ function DownloadCard({
   buttonLabel: string;
   fileType: string;
   onDownload: () => void;
+  loading?: boolean;
 }) {
   return (
     <div className="bg-white rounded-card shadow-card p-6 border border-gray-100 flex flex-col">
@@ -61,11 +77,16 @@ function DownloadCard({
         </span>
         <button
           onClick={onDownload}
-          className="inline-flex items-center gap-2 rounded-btn bg-navy px-4 py-2 text-sm font-semibold text-white hover:bg-navy-light transition-colors"
+          disabled={loading}
+          className="inline-flex items-center gap-2 rounded-btn bg-navy px-4 py-2 text-sm font-semibold text-white hover:bg-navy-light transition-colors disabled:opacity-60"
         >
-          <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-            <path d="M8 2v9M4 8l4 4 4-4M2 14h12" />
-          </svg>
+          {loading ? (
+            <div className="h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent" />
+          ) : (
+            <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M8 2v9M4 8l4 4 4-4M2 14h12" />
+            </svg>
+          )}
           {buttonLabel}
         </button>
       </div>
@@ -115,13 +136,110 @@ const filingSteps = [
 // ---------------------------------------------------------------------------
 
 export default function ReportPage() {
+  return (
+    <Suspense fallback={<div className="min-h-screen bg-offwhite flex items-center justify-center"><div className="h-8 w-8 animate-spin rounded-full border-4 border-navy border-t-transparent" /></div>}>
+      <ReportPageInner />
+    </Suspense>
+  );
+}
+
+function ReportPageInner() {
+  const {
+    analysisSummary,
+    selectedMethod,
+    markPaid,
+  } = useApp();
+
+  const searchParams = useSearchParams();
+
   const [emailSent, setEmailSent] = useState(false);
   const [savedToDashboard, setSavedToDashboard] = useState(false);
+  const [downloadingForm, setDownloadingForm] = useState(false);
+  const [downloadingReport, setDownloadingReport] = useState(false);
 
-  function handleDownload(fileType: string) {
-    alert(
-      `Demo: In production, this would download your ${fileType}. The API endpoint /api/generate-report would generate the file.`
+  // Mark paid if session_id is in URL params (Stripe redirect)
+  useEffect(() => {
+    const sessionId = searchParams.get("session_id");
+    if (sessionId) {
+      markPaid(sessionId);
+    }
+  }, [searchParams, markPaid]);
+
+  // -----------------------------------------------------------------------
+  // No analysis results -- friendly redirect
+  // -----------------------------------------------------------------------
+  if (!analysisSummary) {
+    return (
+      <div className="min-h-screen bg-offwhite flex items-center justify-center">
+        <div className="bg-white rounded-card shadow-card p-10 max-w-md text-center">
+          <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="#64748B" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" className="mx-auto mb-4">
+            <path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z" />
+            <polyline points="14 2 14 8 20 8" />
+          </svg>
+          <h1 className="text-xl font-bold text-navy mb-2">No analysis results found</h1>
+          <p className="text-sm text-slate mb-6">
+            Please upload your 1099-DA and run an analysis first.
+          </p>
+          <Link
+            href="/upload"
+            className="inline-flex items-center gap-2 rounded-btn bg-navy px-6 py-3 text-sm font-semibold text-white hover:bg-navy-light transition-colors"
+          >
+            Go to Upload
+            <span aria-hidden="true">&rarr;</span>
+          </Link>
+        </div>
+      </div>
     );
+  }
+
+  // -----------------------------------------------------------------------
+  // Derived data
+  // -----------------------------------------------------------------------
+  const results = analysisSummary.methodResults[selectedMethod].results;
+
+  // -----------------------------------------------------------------------
+  // Download handlers
+  // -----------------------------------------------------------------------
+
+  async function handleDownloadForm8949() {
+    setDownloadingForm(true);
+    try {
+      const pdfBuffer = await generateForm8949(results);
+      triggerDownload(pdfBuffer, "BasisGuard_Form8949.pdf", "application/pdf");
+    } catch (err) {
+      console.error("Error generating Form 8949:", err);
+    } finally {
+      setDownloadingForm(false);
+    }
+  }
+
+  async function handleDownloadDiscrepancyReport() {
+    setDownloadingReport(true);
+    try {
+      const pdfBuffer = await generateDiscrepancyReport(analysisSummary!, results);
+      triggerDownload(pdfBuffer, "BasisGuard_DiscrepancyReport.pdf", "application/pdf");
+    } catch (err) {
+      console.error("Error generating Discrepancy Report:", err);
+    } finally {
+      setDownloadingReport(false);
+    }
+  }
+
+  function handleDownloadCSV() {
+    const header = "Asset,Sale Date,Proceeds,Reported Basis,Actual Basis,Discrepancy,Status";
+    const rows = results.map((r) =>
+      [
+        r.transaction.asset,
+        formatDate(r.transaction.saleDate),
+        r.transaction.proceeds.toFixed(2),
+        r.reportedBasis.toFixed(2),
+        r.actualBasis.toFixed(2),
+        r.discrepancy.toFixed(2),
+        r.status,
+      ].join(",")
+    );
+    const csv = [header, ...rows].join("\n");
+    triggerDownload(csv, "BasisGuard_Transactions.csv", "text/csv;charset=utf-8");
   }
 
   function handleShareWithCPA() {
@@ -179,11 +297,14 @@ export default function ReportPage() {
             Your Corrected Forms Are Ready!
           </h1>
           <p className="text-slate">
-            Tax year {reportData.taxYear} &middot;{" "}
-            <span className="font-mono">{reportData.transactionCount}</span>{" "}
+            {analysisSummary.taxYear
+              ? `Tax year ${analysisSummary.taxYear}`
+              : `Analyzed ${new Date(analysisSummary.analyzedAt).toLocaleDateString()}`}{" "}
+            &middot;{" "}
+            <span className="font-mono">{analysisSummary.totalTransactions}</span>{" "}
             transactions analyzed &middot; Estimated savings of{" "}
             <span className="font-mono font-semibold text-emerald-dark">
-              {formatUsd(reportData.savings)}
+              {formatUsd(analysisSummary.totalOverpayment)}
             </span>
           </p>
         </div>
@@ -206,7 +327,8 @@ export default function ReportPage() {
               }
               buttonLabel="Download PDF"
               fileType="PDF"
-              onDownload={() => handleDownload("Corrected Form 8949 (PDF)")}
+              onDownload={handleDownloadForm8949}
+              loading={downloadingForm}
             />
             <DownloadCard
               title="1099-DA Discrepancy Report"
@@ -220,9 +342,8 @@ export default function ReportPage() {
               }
               buttonLabel="Download PDF"
               fileType="PDF"
-              onDownload={() =>
-                handleDownload("1099-DA Discrepancy Report (PDF)")
-              }
+              onDownload={handleDownloadDiscrepancyReport}
+              loading={downloadingReport}
             />
             <DownloadCard
               title="Reconciled Transactions"
@@ -235,9 +356,7 @@ export default function ReportPage() {
               }
               buttonLabel="Download CSV"
               fileType="CSV"
-              onDownload={() =>
-                handleDownload("Reconciled Transactions (CSV)")
-              }
+              onDownload={handleDownloadCSV}
             />
           </div>
         </section>

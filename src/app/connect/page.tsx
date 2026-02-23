@@ -4,6 +4,8 @@ import { useState } from "react";
 import Link from "next/link";
 import StepIndicator from "@/components/ui/StepIndicator";
 import FileUploadZone from "@/components/ui/FileUploadZone";
+import { useApp } from "@/lib/context";
+import { parseExchangeCSV } from "@/lib/exchanges/csv";
 
 interface Exchange {
   id: string;
@@ -57,6 +59,14 @@ interface ConnectionState {
 }
 
 export default function ConnectPage() {
+  const {
+    connectedExchanges,
+    exchangeHistory,
+    addConnectedExchange,
+    addExchangeHistory,
+    confirmConnect,
+  } = useApp();
+
   const [connections, setConnections] = useState<Record<string, ConnectionState>>(
     () => {
       const initial: Record<string, ConnectionState> = {};
@@ -73,6 +83,8 @@ export default function ConnectPage() {
   );
 
   const [csvUploaded, setCsvUploaded] = useState(false);
+  const [csvParseCount, setCsvParseCount] = useState(0);
+  const [csvParseError, setCsvParseError] = useState<string | null>(null);
 
   const updateConnection = (id: string, updates: Partial<ConnectionState>) => {
     setConnections((prev) => ({
@@ -86,6 +98,12 @@ export default function ConnectPage() {
     // Simulate OAuth flow
     await new Promise((resolve) => setTimeout(resolve, 2000));
     updateConnection(exchangeId, { connected: true, loading: false });
+
+    // Find the exchange name and store in shared context
+    const exchange = exchanges.find((ex) => ex.id === exchangeId);
+    if (exchange) {
+      addConnectedExchange(exchange.name);
+    }
   };
 
   const handleApiKeyConnect = async (exchangeId: string) => {
@@ -96,14 +114,48 @@ export default function ConnectPage() {
     // Simulate API key validation
     await new Promise((resolve) => setTimeout(resolve, 1500));
     updateConnection(exchangeId, { connected: true, loading: false });
+
+    // Find the exchange name and store in shared context
+    const exchange = exchanges.find((ex) => ex.id === exchangeId);
+    if (exchange) {
+      addConnectedExchange(exchange.name);
+    }
   };
 
-  const handleCsvUpload = () => {
-    setCsvUploaded(true);
+  const handleCsvUpload = (file: File) => {
+    setCsvParseError(null);
+
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      try {
+        const text = e.target?.result as string;
+        const transactions = parseExchangeCSV(text, "generic");
+
+        if (transactions.length > 0) {
+          addExchangeHistory(transactions);
+          addConnectedExchange("CSV Upload");
+          setCsvParseCount(transactions.length);
+          setCsvUploaded(true);
+        } else {
+          setCsvParseError("No transactions found in the CSV file.");
+        }
+      } catch {
+        setCsvParseError("Failed to parse the CSV file. Please check the format.");
+      }
+    };
+    reader.onerror = () => {
+      setCsvParseError("Failed to read the CSV file.");
+    };
+    reader.readAsText(file);
   };
 
+  // Enable continue when at least one exchange is connected or CSV history exists
   const anyConnected =
-    Object.values(connections).some((c) => c.connected) || csvUploaded;
+    connectedExchanges.length > 0 || exchangeHistory.length > 0;
+
+  const handleContinue = () => {
+    confirmConnect();
+  };
 
   return (
     <div className="min-h-screen bg-offwhite">
@@ -372,7 +424,7 @@ export default function ConnectPage() {
               </svg>
               <div>
                 <p className="text-sm font-medium text-charcoal">
-                  CSV uploaded successfully
+                  CSV uploaded successfully - {csvParseCount} transactions parsed
                 </p>
                 <p className="text-xs text-slate mt-0.5">
                   Your transaction history will be included in the analysis.
@@ -382,6 +434,11 @@ export default function ConnectPage() {
           ) : (
             <div className="max-w-lg mx-auto">
               <FileUploadZone accept="csv" onFileSelect={handleCsvUpload} />
+              {csvParseError && (
+                <p className="mt-3 text-sm text-red-600 text-center">
+                  {csvParseError}
+                </p>
+              )}
             </div>
           )}
         </div>
@@ -409,6 +466,7 @@ export default function ConnectPage() {
           </Link>
           <Link
             href="/analysis"
+            onClick={anyConnected ? handleContinue : undefined}
             className={`
               inline-flex items-center gap-2 rounded-btn px-6 py-3 text-sm font-semibold transition-colors
               ${

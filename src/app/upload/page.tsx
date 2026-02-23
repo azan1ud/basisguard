@@ -5,9 +5,11 @@ import Link from "next/link";
 import StepIndicator from "@/components/ui/StepIndicator";
 import FileUploadZone from "@/components/ui/FileUploadZone";
 import ParsedDataTable, {
-  type Transaction1099DA,
+  type Transaction1099DA as TableTransaction,
 } from "@/components/upload/ParsedDataTable";
 import ManualEntryForm from "@/components/upload/ManualEntryForm";
+import { useApp } from "@/lib/context";
+import type { Transaction1099DA as CoreTransaction } from "@/lib/types";
 
 type TabKey = "pdf" | "csv" | "manual";
 
@@ -17,19 +19,41 @@ const tabs: { key: TabKey; label: string }[] = [
   { key: "manual", label: "Manual Entry" },
 ];
 
+/**
+ * Convert ParsedDataTable rows (string dates, grossProceeds) to core Transaction1099DA[]
+ * (Date objects, proceeds field) for storage in shared context.
+ */
+function tableRowsToCoreData(rows: TableTransaction[]): CoreTransaction[] {
+  return rows.map((row) => ({
+    id: row.id,
+    asset: row.asset,
+    proceeds: row.grossProceeds,
+    reportedBasis: row.reportedBasis,
+    saleDate: new Date(row.saleDate),
+    broker: row.broker,
+    transactionId: "",
+  }));
+}
+
 export default function UploadPage() {
+  const {
+    uploadConfirmed,
+    setForm1099Data,
+    confirmUpload,
+  } = useApp();
+
   const [activeTab, setActiveTab] = useState<TabKey>("pdf");
   const [isParsingPdf, setIsParsingPdf] = useState(false);
   const [pdfProgress, setPdfProgress] = useState(0);
-  const [parsedData, setParsedData] = useState<Transaction1099DA[] | null>(null);
+  const [parsedData, setParsedData] = useState<TableTransaction[] | null>(null);
   const [dataConfirmed, setDataConfirmed] = useState(false);
 
   const [isParsingCsv, setIsParsingCsv] = useState(false);
   const [csvProgress, setCsvProgress] = useState(0);
-  const [csvData, setCsvData] = useState<Transaction1099DA[] | null>(null);
+  const [csvData, setCsvData] = useState<TableTransaction[] | null>(null);
   const [csvConfirmed, setCsvConfirmed] = useState(false);
 
-  const [manualTransactions, setManualTransactions] = useState<Transaction1099DA[]>([]);
+  const [manualTransactions, setManualTransactions] = useState<TableTransaction[]>([]);
 
   const handlePdfUpload = async (file: File) => {
     setIsParsingPdf(true);
@@ -66,6 +90,7 @@ export default function UploadPage() {
       setTimeout(() => {
         setIsParsingPdf(false);
         setPdfProgress(0);
+        // API response goes into the table as-is (string dates, grossProceeds naming)
         setParsedData(result.transactions);
       }, 400);
     } catch {
@@ -119,7 +144,7 @@ export default function UploadPage() {
           return;
         }
 
-        const transactions: Transaction1099DA[] = lines.slice(1).map((line) => {
+        const transactions: TableTransaction[] = lines.slice(1).map((line) => {
           const cols = line.split(",").map((c) => c.trim().replace(/"/g, ""));
           return {
             id: crypto.randomUUID(),
@@ -142,7 +167,7 @@ export default function UploadPage() {
     reader.readAsText(file);
   };
 
-  const handleManualAdd = (tx: Transaction1099DA) => {
+  const handleManualAdd = (tx: TableTransaction) => {
     setManualTransactions((prev) => [...prev, tx]);
   };
 
@@ -150,7 +175,16 @@ export default function UploadPage() {
     setManualTransactions((prev) => prev.filter((t) => t.id !== id));
   };
 
-  const handleConfirmData = (data: Transaction1099DA[]) => {
+  /**
+   * When the user clicks "Confirm Data" on the ParsedDataTable, convert the
+   * table rows into the core Transaction1099DA[] type and push into context.
+   */
+  const handleConfirmData = (data: TableTransaction[]) => {
+    // Convert table format to core format and store in shared context
+    const coreData = tableRowsToCoreData(data);
+    setForm1099Data(coreData);
+    confirmUpload();
+
     if (activeTab === "pdf") {
       setParsedData(data);
       setDataConfirmed(true);
@@ -160,9 +194,19 @@ export default function UploadPage() {
     }
   };
 
+  /**
+   * When manual transactions are confirmed (user has added entries and wants
+   * to proceed), convert and push to context.
+   */
+  const handleConfirmManual = () => {
+    const coreData = tableRowsToCoreData(manualTransactions);
+    setForm1099Data(coreData);
+    confirmUpload();
+  };
+
+  // The continue button is enabled when the shared context has confirmed data
   const hasData =
-    (activeTab === "pdf" && dataConfirmed) ||
-    (activeTab === "csv" && csvConfirmed) ||
+    uploadConfirmed ||
     (activeTab === "manual" && manualTransactions.length > 0);
 
   return (
@@ -358,11 +402,49 @@ export default function UploadPage() {
 
             {/* Manual Entry Tab */}
             {activeTab === "manual" && (
-              <ManualEntryForm
-                onAddTransaction={handleManualAdd}
-                transactions={manualTransactions}
-                onRemoveTransaction={handleManualRemove}
-              />
+              <div className="space-y-6">
+                <ManualEntryForm
+                  onAddTransaction={handleManualAdd}
+                  transactions={manualTransactions}
+                  onRemoveTransaction={handleManualRemove}
+                />
+                {manualTransactions.length > 0 && !uploadConfirmed && (
+                  <div className="flex justify-end">
+                    <button
+                      type="button"
+                      onClick={handleConfirmManual}
+                      className="inline-flex items-center justify-center rounded-btn bg-emerald px-6 py-2.5 text-sm font-semibold text-white hover:bg-emerald-dark transition-colors"
+                    >
+                      Confirm Data
+                    </button>
+                  </div>
+                )}
+                {uploadConfirmed && manualTransactions.length > 0 && (
+                  <div className="flex items-center gap-3 rounded-card bg-emerald/5 border border-emerald/20 p-4">
+                    <svg
+                      width="20"
+                      height="20"
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="#10B981"
+                      strokeWidth="2"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                    >
+                      <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14" />
+                      <polyline points="22 4 12 14.01 9 11.01" />
+                    </svg>
+                    <div>
+                      <p className="text-sm font-medium text-charcoal">
+                        Data confirmed - {manualTransactions.length} transactions
+                      </p>
+                      <p className="text-xs text-slate mt-0.5">
+                        You can proceed to the next step.
+                      </p>
+                    </div>
+                  </div>
+                )}
+              </div>
             )}
           </div>
         </div>
@@ -403,7 +485,7 @@ export default function UploadPage() {
 }
 
 /** Fallback sample data for when parsing fails or for demo purposes */
-function getSampleData(): Transaction1099DA[] {
+function getSampleData(): TableTransaction[] {
   return [
     {
       id: crypto.randomUUID(),

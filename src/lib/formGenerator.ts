@@ -27,7 +27,7 @@ import {
  */
 export async function generateForm8949(
   results: MismatchResult[],
-): Promise<Buffer> {
+): Promise<ArrayBuffer> {
   const doc = new jsPDF({ orientation: 'portrait', unit: 'pt', format: 'letter' });
 
   // Filter to only mismatches and missing-basis entries (matches don't need correction)
@@ -35,7 +35,7 @@ export async function generateForm8949(
 
   if (toReport.length === 0) {
     addCenteredText(doc, 'No mismatches or missing basis entries to report.', 300);
-    return Buffer.from(doc.output('arraybuffer'));
+    return doc.output('arraybuffer');
   }
 
   // Paginate: Form 8949 has room for roughly 14 rows per page
@@ -50,7 +50,7 @@ export async function generateForm8949(
     renderForm8949Page(doc, pages[pageIdx], pageIdx + 1, pages.length);
   }
 
-  return Buffer.from(doc.output('arraybuffer'));
+  return doc.output('arraybuffer');
 }
 
 /**
@@ -64,7 +64,7 @@ export async function generateForm8949(
 export async function generateDiscrepancyReport(
   summary: AnalysisSummary,
   results: MismatchResult[],
-): Promise<Buffer> {
+): Promise<ArrayBuffer> {
   const doc = new jsPDF({ orientation: 'portrait', unit: 'pt', format: 'letter' });
 
   // -- Page 1: Executive Summary --
@@ -79,7 +79,7 @@ export async function generateDiscrepancyReport(
   doc.addPage();
   renderTransactionDetails(doc, results);
 
-  return Buffer.from(doc.output('arraybuffer'));
+  return doc.output('arraybuffer');
 }
 
 // =============================================================================
