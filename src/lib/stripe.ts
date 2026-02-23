@@ -31,10 +31,10 @@ function getStripe(): Stripe {
 }
 
 function getAppUrl(): string {
-  const url = process.env.NEXT_PUBLIC_APP_URL;
+  const url = process.env.NEXT_PUBLIC_BASE_URL || process.env.NEXT_PUBLIC_APP_URL;
   if (!url) {
     throw new Error(
-      'NEXT_PUBLIC_APP_URL environment variable is not set. Set it to your app base URL.',
+      'NEXT_PUBLIC_BASE_URL environment variable is not set. Set it to your app base URL.',
     );
   }
   return url.replace(/\/$/, ''); // Strip trailing slash
@@ -165,8 +165,8 @@ export async function createCheckoutSession(
         quantity: 1,
       },
     ],
-    success_url: `${appUrl}/checkout/success?session_id={CHECKOUT_SESSION_ID}`,
-    cancel_url: `${appUrl}/checkout/cancel`,
+    success_url: `${appUrl}/report?session_id={CHECKOUT_SESSION_ID}`,
+    cancel_url: `${appUrl}/checkout`,
     client_reference_id: sessionId,
     metadata: {
       tier,

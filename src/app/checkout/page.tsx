@@ -72,16 +72,35 @@ export default function CheckoutPage() {
   const activeTier = pricingTiers.find((t) => t.id === selectedTier)!;
   const lowSavings = orderData.savings < 100;
 
-  function handlePay() {
+  async function handlePay() {
     setProcessing(true);
-    // In production, this would call /api/create-checkout
-    setTimeout(() => {
-      setProcessing(false);
+    try {
+      const res = await fetch("/api/create-checkout", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          tier: selectedTier,
+          sessionId: "anonymous",
+        }),
+      });
+
+      const data = await res.json();
+
+      if (!res.ok) {
+        throw new Error(data.error || "Failed to create checkout session");
+      }
+
+      // Redirect to Stripe Checkout
+      window.location.href = data.url;
+    } catch (err) {
+      console.error("Checkout error:", err);
       alert(
-        "Stripe checkout would open here. This is a demo. Redirecting to report page."
+        err instanceof Error
+          ? err.message
+          : "Something went wrong. Please try again."
       );
-      window.location.href = "/report";
-    }, 1500);
+      setProcessing(false);
+    }
   }
 
   return (
