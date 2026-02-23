@@ -3,19 +3,7 @@
 import { useState } from "react";
 import Link from "next/link";
 import StepIndicator from "@/components/ui/StepIndicator";
-
-// ---------------------------------------------------------------------------
-// Mock order data (would come from analysis context in production)
-// ---------------------------------------------------------------------------
-
-const orderData = {
-  transactionCount: 47,
-  mismatchCount: 11,
-  savings: 38_910,
-  tier: "pro" as const,
-  tierLabel: "Pro",
-  price: 39.99,
-};
+import { useApp } from "@/lib/context";
 
 const pricingTiers = [
   {
@@ -66,11 +54,17 @@ function formatUsd(n: number): string {
 }
 
 export default function CheckoutPage() {
-  const [selectedTier, setSelectedTier] = useState<string>(orderData.tier);
+  const { analysisSummary } = useApp();
+  const [selectedTier, setSelectedTier] = useState<string>("pro");
   const [processing, setProcessing] = useState(false);
 
   const activeTier = pricingTiers.find((t) => t.id === selectedTier)!;
-  const lowSavings = orderData.savings < 100;
+
+  // Pull real data from analysis context, fallback to 0 if no analysis yet
+  const transactionCount = analysisSummary?.totalTransactions ?? 0;
+  const mismatchCount = analysisSummary?.mismatchCount ?? 0;
+  const savings = analysisSummary?.totalOverpayment ?? 0;
+  const lowSavings = savings < 100;
 
   async function handlePay() {
     setProcessing(true);
@@ -148,7 +142,7 @@ export default function CheckoutPage() {
           <div className="mb-8 bg-emerald/5 border border-emerald/30 rounded-card p-5 text-center max-w-lg mx-auto">
             <p className="text-sm font-medium text-emerald-dark">
               Your 1099-DA is mostly accurate. Your estimated discrepancy is
-              only {formatUsd(orderData.savings)}. No action may be needed, but
+              only {formatUsd(savings)}. No action may be needed, but
               you can still download corrected forms if you wish.
             </p>
           </div>
@@ -220,19 +214,19 @@ export default function CheckoutPage() {
               <div className="flex justify-between">
                 <span className="text-slate">Transactions analyzed</span>
                 <span className="font-mono font-medium text-charcoal">
-                  {orderData.transactionCount}
+                  {transactionCount}
                 </span>
               </div>
               <div className="flex justify-between">
                 <span className="text-slate">Mismatches found</span>
                 <span className="font-mono font-medium text-danger">
-                  {orderData.mismatchCount}
+                  {mismatchCount}
                 </span>
               </div>
               <div className="flex justify-between">
                 <span className="text-slate">Estimated savings</span>
                 <span className="font-mono font-semibold text-emerald">
-                  {formatUsd(orderData.savings)}
+                  {formatUsd(savings)}
                 </span>
               </div>
               <div className="border-t border-gray-200 pt-3 flex justify-between">
