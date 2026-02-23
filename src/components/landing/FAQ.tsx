@@ -11,7 +11,7 @@ const faqs = [
   {
     question: "When do I need to do this? What's the deadline?",
     answer:
-      "You should correct your cost basis before filing your 2024 tax return (due April 15, 2025, or October 15, 2025 with an extension). If you've already filed without your correct cost basis, you can file an amended return (Form 1040-X) to claim a refund. There's generally a 3-year window to file an amended return from the original due date.",
+      "You should correct your cost basis before filing your 2025 tax return (due April 15, 2026, or October 15, 2026 with an extension). If you've already filed without your correct cost basis, you can file an amended return (Form 1040-X) to claim a refund. There's generally a 3-year window to file an amended return from the original due date.",
   },
   {
     question: "Which exchanges are supported?",

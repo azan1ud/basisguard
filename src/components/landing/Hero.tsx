@@ -93,7 +93,7 @@ export default function Hero() {
         <div className="mb-6 inline-flex items-center gap-1.5 rounded-full border border-amber/30 bg-amber/5 px-3 py-1">
           <span className="h-1.5 w-1.5 rounded-full bg-amber" />
           <span className="text-xs font-medium text-amber-dark">
-            2025 Tax Season: New IRS 1099-DA Reporting
+            2026 Tax Season: New IRS 1099-DA Reporting
           </span>
         </div>
 

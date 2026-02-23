@@ -9,11 +9,11 @@ import StepIndicator from "@/components/ui/StepIndicator";
 // ---------------------------------------------------------------------------
 
 const reportData = {
-  taxYear: 2024,
+  taxYear: 2025,
   transactionCount: 47,
   mismatchCount: 11,
-  savings: 38_910,
-  generatedAt: "2025-03-15T14:30:00Z",
+  savings: 48_070,
+  generatedAt: "2026-03-15T14:30:00Z",
 };
 
 function formatUsd(n: number): string {
