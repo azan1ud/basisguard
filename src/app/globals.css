@@ -2,22 +2,26 @@
 @tailwind components;
 @tailwind utilities;
 
-:root {
-  --background: #ffffff;
-  --foreground: #171717;
-}
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600;700&display=swap');
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+:root {
+  --navy: #1B2A4A;
+  --emerald: #10B981;
+  --amber: #F59E0B;
+  --danger: #EF4444;
+  --charcoal: #1E293B;
+  --slate: #64748B;
+  --offwhite: #F8FAFC;
 }
 
 body {
-  color: var(--foreground);
-  background: var(--background);
-  font-family: Arial, Helvetica, sans-serif;
+  font-family: 'Inter', system-ui, sans-serif;
+  color: var(--charcoal);
+  background-color: var(--offwhite);
+}
+
+.font-mono {
+  font-family: 'JetBrains Mono', monospace;
 }
 
 @layer utilities {
