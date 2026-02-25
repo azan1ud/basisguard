@@ -54,7 +54,7 @@ function formatUsd(n: number): string {
 }
 
 export default function CheckoutPage() {
-  const { analysisSummary } = useApp();
+  const { analysisSummary, firebaseUser } = useApp();
   const [selectedTier, setSelectedTier] = useState<string>("pro");
   const [processing, setProcessing] = useState(false);
 
@@ -74,7 +74,7 @@ export default function CheckoutPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           tier: selectedTier,
-          sessionId: "anonymous",
+          sessionId: firebaseUser?.uid || "anonymous",
         }),
       });
 

@@ -6,6 +6,7 @@ import { useSearchParams } from "next/navigation";
 import StepIndicator from "@/components/ui/StepIndicator";
 import { useApp } from "@/lib/context";
 import { generateForm8949, generateDiscrepancyReport } from "@/lib/formGenerator";
+import { saveAnalysisResults } from "@/lib/firebase";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -148,6 +149,15 @@ function ReportPageInner() {
     analysisSummary,
     selectedMethod,
     markPaid,
+    firebaseUser,
+    signIn,
+    form1099Data,
+    exchangeHistory,
+    connectedExchanges,
+    isPaid,
+    stripeSessionId,
+    uploadConfirmed,
+    connectConfirmed,
   } = useApp();
 
   const searchParams = useSearchParams();
@@ -247,8 +257,46 @@ function ReportPageInner() {
     setTimeout(() => setEmailSent(false), 3000);
   }
 
-  function handleSaveToDashboard() {
-    setSavedToDashboard(true);
+  async function handleSaveToDashboard() {
+    if (!firebaseUser) {
+      // Prompt sign-in first
+      await signIn();
+      return;
+    }
+
+    try {
+      const docId = `analysis-${Date.now()}`;
+      const serializeDates = (obj: unknown): unknown => {
+        if (obj instanceof Date) return obj.toISOString();
+        if (Array.isArray(obj)) return obj.map(serializeDates);
+        if (obj && typeof obj === "object") {
+          const out: Record<string, unknown> = {};
+          for (const [k, v] of Object.entries(obj)) {
+            out[k] = serializeDates(v);
+          }
+          return out;
+        }
+        return obj;
+      };
+
+      const payload = serializeDates({
+        form1099Data,
+        uploadConfirmed,
+        exchangeHistory,
+        connectedExchanges,
+        connectConfirmed,
+        analysisSummary,
+        selectedMethod,
+        isPaid,
+        stripeSessionId,
+        status: "complete",
+      }) as Record<string, unknown>;
+
+      await saveAnalysisResults(firebaseUser.uid, docId, payload);
+      setSavedToDashboard(true);
+    } catch (err) {
+      console.error("Error saving to dashboard:", err);
+    }
   }
 
   return (

@@ -1,50 +1,13 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import Link from "next/link";
+import { useApp } from "@/lib/context";
+import { getUserAnalyses } from "@/lib/firebase";
 
 // ---------------------------------------------------------------------------
-// Mock data
+// Helpers
 // ---------------------------------------------------------------------------
-
-const mockReports = [
-  {
-    id: "rpt-001",
-    date: "2026-03-15",
-    taxYear: 2025,
-    exchanges: ["Coinbase", "Kraken"],
-    transactions: 47,
-    savings: 48_070,
-    status: "complete" as const,
-  },
-  {
-    id: "rpt-002",
-    date: "2026-02-28",
-    taxYear: 2025,
-    exchanges: ["Binance US"],
-    transactions: 23,
-    savings: 15_820,
-    status: "complete" as const,
-  },
-  {
-    id: "rpt-003",
-    date: "2026-01-12",
-    taxYear: 2024,
-    exchanges: ["Coinbase"],
-    transactions: 15,
-    savings: 5_340,
-    status: "complete" as const,
-  },
-  {
-    id: "rpt-004",
-    date: "2025-12-05",
-    taxYear: 2024,
-    exchanges: ["Gemini", "Coinbase"],
-    transactions: 62,
-    savings: 51_340,
-    status: "complete" as const,
-  },
-];
 
 function formatUsd(n: number): string {
   return n.toLocaleString("en-US", {
@@ -53,6 +16,16 @@ function formatUsd(n: number): string {
     minimumFractionDigits: 0,
     maximumFractionDigits: 0,
   });
+}
+
+interface Report {
+  id: string;
+  date: string;
+  taxYear: number;
+  exchanges: string[];
+  transactions: number;
+  savings: number;
+  status: "complete" | "pending" | "expired";
 }
 
 function StatusBadge({ status }: { status: "complete" | "pending" | "expired" }) {
@@ -75,7 +48,97 @@ function StatusBadge({ status }: { status: "complete" | "pending" | "expired" })
 // ---------------------------------------------------------------------------
 
 export default function DashboardPage() {
-  const [reports] = useState(mockReports);
+  const { firebaseUser, authLoading, signIn, signOutUser, userSession } = useApp();
+  const [reports, setReports] = useState<Report[]>([]);
+  const [loadingReports, setLoadingReports] = useState(true);
+
+  useEffect(() => {
+    if (authLoading || !firebaseUser) {
+      setLoadingReports(false);
+      return;
+    }
+
+    let cancelled = false;
+
+    async function load() {
+      try {
+        const docs = await getUserAnalyses(firebaseUser!.uid);
+
+        const mapped: Report[] = docs
+          .filter((d) => d.id !== "draft")
+          .map((d) => {
+            const summary = d.analysisSummary as Record<string, unknown> | undefined;
+            const createdAt = d.createdAt as { seconds?: number } | string | undefined;
+            let dateStr = "";
+            if (createdAt && typeof createdAt === "object" && "seconds" in createdAt) {
+              dateStr = new Date((createdAt.seconds as number) * 1000)
+                .toISOString()
+                .slice(0, 10);
+            } else if (typeof createdAt === "string") {
+              dateStr = new Date(createdAt).toISOString().slice(0, 10);
+            }
+
+            return {
+              id: d.id,
+              date: dateStr,
+              taxYear: (summary?.taxYear as number) ?? new Date().getFullYear(),
+              exchanges: (d.connectedExchanges as string[]) ?? [],
+              transactions: (summary?.totalTransactions as number) ?? 0,
+              savings: (summary?.totalOverpayment as number) ?? 0,
+              status: ((d.status as string) ?? "complete") as Report["status"],
+            };
+          });
+
+        if (!cancelled) {
+          setReports(mapped);
+          setLoadingReports(false);
+        }
+      } catch (err) {
+        console.error("Error loading analyses:", err);
+        if (!cancelled) setLoadingReports(false);
+      }
+    }
+
+    load();
+    return () => { cancelled = true; };
+  }, [firebaseUser, authLoading]);
+
+  // -------------------------------------------------------------------------
+  // Sign-in prompt
+  // -------------------------------------------------------------------------
+  if (!authLoading && !firebaseUser) {
+    return (
+      <div className="min-h-screen bg-offwhite flex items-center justify-center">
+        <div className="bg-white rounded-card shadow-card p-10 max-w-md text-center">
+          <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="#64748B" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" className="mx-auto mb-4">
+            <path d="M20 21v-2a4 4 0 00-4-4H8a4 4 0 00-4 4v2" />
+            <circle cx="12" cy="7" r="4" />
+          </svg>
+          <h1 className="text-xl font-bold text-navy mb-2">Sign in to view your dashboard</h1>
+          <p className="text-sm text-slate mb-6">
+            Your saved reports and analysis history will appear here.
+          </p>
+          <button
+            onClick={signIn}
+            className="inline-flex items-center gap-2 rounded-btn bg-navy px-6 py-3 text-sm font-semibold text-white hover:bg-navy-light transition-colors"
+          >
+            Sign in with Google
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  // -------------------------------------------------------------------------
+  // Loading state
+  // -------------------------------------------------------------------------
+  if (authLoading || loadingReports) {
+    return (
+      <div className="min-h-screen bg-offwhite flex items-center justify-center">
+        <div className="h-8 w-8 animate-spin rounded-full border-4 border-navy border-t-transparent" />
+      </div>
+    );
+  }
 
   const totalSavings = reports.reduce((s, r) => s + r.savings, 0);
   const totalTransactions = reports.reduce((s, r) => s + r.transactions, 0);
@@ -99,14 +162,14 @@ export default function DashboardPage() {
             </Link>
             <div className="flex items-center gap-4">
               <span className="text-sm text-slate hidden sm:inline">
-                demo@basisguard.com
+                {userSession?.email || firebaseUser?.email || ""}
               </span>
-              <Link
-                href="/"
+              <button
+                onClick={signOutUser}
                 className="text-sm font-medium text-slate hover:text-charcoal transition-colors"
               >
-                Log out
-              </Link>
+                Sign out
+              </button>
             </div>
           </div>
         </div>
@@ -117,7 +180,7 @@ export default function DashboardPage() {
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-10">
           <div>
             <h1 className="text-2xl sm:text-3xl font-bold text-navy">
-              Welcome back
+              Welcome back{firebaseUser?.displayName ? `, ${firebaseUser.displayName.split(" ")[0]}` : ""}
             </h1>
             <p className="text-slate mt-1">
               Here are your saved reports and analysis history.
@@ -165,98 +228,111 @@ export default function DashboardPage() {
         {/* Reports Table */}
         <section className="mb-16">
           <h2 className="text-xl font-bold text-navy mb-4">Your Reports</h2>
-          <div className="bg-white rounded-card shadow-card overflow-hidden border border-gray-100">
-            <div className="overflow-x-auto">
-              <table className="w-full text-sm">
-                <thead>
-                  <tr className="border-b border-gray-200 bg-gray-50/50">
-                    <th className="text-left px-4 py-3 font-semibold text-slate text-xs uppercase tracking-wider">
-                      Date
-                    </th>
-                    <th className="text-left px-4 py-3 font-semibold text-slate text-xs uppercase tracking-wider">
-                      Tax Year
-                    </th>
-                    <th className="text-left px-4 py-3 font-semibold text-slate text-xs uppercase tracking-wider">
-                      Exchanges
-                    </th>
-                    <th className="text-right px-4 py-3 font-semibold text-slate text-xs uppercase tracking-wider">
-                      Transactions
-                    </th>
-                    <th className="text-right px-4 py-3 font-semibold text-slate text-xs uppercase tracking-wider">
-                      Savings
-                    </th>
-                    <th className="text-center px-4 py-3 font-semibold text-slate text-xs uppercase tracking-wider">
-                      Status
-                    </th>
-                    <th className="text-center px-4 py-3 font-semibold text-slate text-xs uppercase tracking-wider">
-                      Actions
-                    </th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {reports.map((report, i) => (
-                    <tr
-                      key={report.id}
-                      className={`border-b border-gray-100 hover:bg-gray-50/50 transition-colors ${
-                        i % 2 === 1 ? "bg-gray-50/30" : ""
-                      }`}
-                    >
-                      <td className="px-4 py-3 font-mono text-xs text-slate">
-                        {report.date}
-                      </td>
-                      <td className="px-4 py-3 font-medium text-charcoal">
-                        {report.taxYear}
-                      </td>
-                      <td className="px-4 py-3 text-charcoal">
-                        <div className="flex flex-wrap gap-1">
-                          {report.exchanges.map((ex) => (
-                            <span
-                              key={ex}
-                              className="inline-flex items-center rounded-full bg-navy/5 px-2 py-0.5 text-xs font-medium text-navy"
-                            >
-                              {ex}
-                            </span>
-                          ))}
-                        </div>
-                      </td>
-                      <td className="px-4 py-3 font-mono text-right text-charcoal">
-                        {report.transactions}
-                      </td>
-                      <td className="px-4 py-3 font-mono text-right font-semibold text-emerald">
-                        {formatUsd(report.savings)}
-                      </td>
-                      <td className="px-4 py-3 text-center">
-                        <StatusBadge status={report.status} />
-                      </td>
-                      <td className="px-4 py-3 text-center">
-                        <div className="flex items-center justify-center gap-2">
-                          <Link
-                            href="/report"
-                            className="inline-flex items-center gap-1 rounded-btn bg-navy/5 px-3 py-1.5 text-xs font-medium text-navy hover:bg-navy/10 transition-colors"
-                          >
-                            <svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-                              <path d="M6 1v7M3 6l3 3 3-3M1 11h10" />
-                            </svg>
-                            Download
-                          </Link>
-                          <Link
-                            href="/analysis"
-                            className="inline-flex items-center gap-1 rounded-btn bg-navy/5 px-3 py-1.5 text-xs font-medium text-navy hover:bg-navy/10 transition-colors"
-                          >
-                            <svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-                              <circle cx="6" cy="6" r="1.5" />
-                              <path d="M1 6s2-4 5-4 5 4 5 4-2 4-5 4-5-4-5-4z" />
-                            </svg>
-                            View
-                          </Link>
-                        </div>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+
+          {reports.length === 0 ? (
+            <div className="bg-white rounded-card shadow-card p-10 border border-gray-100 text-center">
+              <p className="text-slate mb-4">No saved reports yet.</p>
+              <Link
+                href="/upload"
+                className="inline-flex items-center gap-2 rounded-btn bg-emerald px-6 py-3 text-sm font-semibold text-white hover:bg-emerald-dark transition-colors"
+              >
+                Start Your First Analysis
+              </Link>
             </div>
-          </div>
+          ) : (
+            <div className="bg-white rounded-card shadow-card overflow-hidden border border-gray-100">
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="border-b border-gray-200 bg-gray-50/50">
+                      <th className="text-left px-4 py-3 font-semibold text-slate text-xs uppercase tracking-wider">
+                        Date
+                      </th>
+                      <th className="text-left px-4 py-3 font-semibold text-slate text-xs uppercase tracking-wider">
+                        Tax Year
+                      </th>
+                      <th className="text-left px-4 py-3 font-semibold text-slate text-xs uppercase tracking-wider">
+                        Exchanges
+                      </th>
+                      <th className="text-right px-4 py-3 font-semibold text-slate text-xs uppercase tracking-wider">
+                        Transactions
+                      </th>
+                      <th className="text-right px-4 py-3 font-semibold text-slate text-xs uppercase tracking-wider">
+                        Savings
+                      </th>
+                      <th className="text-center px-4 py-3 font-semibold text-slate text-xs uppercase tracking-wider">
+                        Status
+                      </th>
+                      <th className="text-center px-4 py-3 font-semibold text-slate text-xs uppercase tracking-wider">
+                        Actions
+                      </th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {reports.map((report, i) => (
+                      <tr
+                        key={report.id}
+                        className={`border-b border-gray-100 hover:bg-gray-50/50 transition-colors ${
+                          i % 2 === 1 ? "bg-gray-50/30" : ""
+                        }`}
+                      >
+                        <td className="px-4 py-3 font-mono text-xs text-slate">
+                          {report.date}
+                        </td>
+                        <td className="px-4 py-3 font-medium text-charcoal">
+                          {report.taxYear}
+                        </td>
+                        <td className="px-4 py-3 text-charcoal">
+                          <div className="flex flex-wrap gap-1">
+                            {report.exchanges.map((ex) => (
+                              <span
+                                key={ex}
+                                className="inline-flex items-center rounded-full bg-navy/5 px-2 py-0.5 text-xs font-medium text-navy"
+                              >
+                                {ex}
+                              </span>
+                            ))}
+                          </div>
+                        </td>
+                        <td className="px-4 py-3 font-mono text-right text-charcoal">
+                          {report.transactions}
+                        </td>
+                        <td className="px-4 py-3 font-mono text-right font-semibold text-emerald">
+                          {formatUsd(report.savings)}
+                        </td>
+                        <td className="px-4 py-3 text-center">
+                          <StatusBadge status={report.status} />
+                        </td>
+                        <td className="px-4 py-3 text-center">
+                          <div className="flex items-center justify-center gap-2">
+                            <Link
+                              href="/report"
+                              className="inline-flex items-center gap-1 rounded-btn bg-navy/5 px-3 py-1.5 text-xs font-medium text-navy hover:bg-navy/10 transition-colors"
+                            >
+                              <svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                                <path d="M6 1v7M3 6l3 3 3-3M1 11h10" />
+                              </svg>
+                              Download
+                            </Link>
+                            <Link
+                              href="/analysis"
+                              className="inline-flex items-center gap-1 rounded-btn bg-navy/5 px-3 py-1.5 text-xs font-medium text-navy hover:bg-navy/10 transition-colors"
+                            >
+                              <svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                                <circle cx="6" cy="6" r="1.5" />
+                                <path d="M1 6s2-4 5-4 5 4 5 4-2 4-5 4-5-4-5-4z" />
+                              </svg>
+                              View
+                            </Link>
+                          </div>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
         </section>
 
         {/* Disclaimer */}

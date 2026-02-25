@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { constructWebhookEvent } from "@/lib/stripe";
+import { updateUserTier } from "@/lib/firebase";
+import { PricingTier } from "@/lib/types";
 import Stripe from "stripe";
 
 export async function POST(request: NextRequest) {
@@ -38,8 +40,9 @@ export async function POST(request: NextRequest) {
           email: session.customer_details?.email,
         });
 
-        // In production with Firebase wired up:
-        // await updateUserTier(userId, tier as PricingTier, session.customer as string);
+        if (userId) {
+          await updateUserTier(userId, tier as PricingTier, (session.customer as string) || "");
+        }
         break;
       }
 

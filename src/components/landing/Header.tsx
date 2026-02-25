@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import Link from "next/link";
+import { useApp } from "@/lib/context";
 
 const navLinks = [
   { label: "How It Works", href: "#how-it-works" },
@@ -12,6 +13,9 @@ const navLinks = [
 
 export default function Header() {
   const [mobileOpen, setMobileOpen] = useState(false);
+  const { firebaseUser, authLoading, signIn } = useApp();
+
+  const isSignedIn = !authLoading && firebaseUser !== null;
 
   return (
     <header className="sticky top-0 z-50 bg-white/95 backdrop-blur border-b border-gray-200/60">
@@ -62,13 +66,38 @@ export default function Header() {
           </nav>
 
           {/* Desktop CTA */}
-          <div className="hidden md:block">
-            <Link
-              href="/upload"
-              className="inline-flex items-center rounded-btn bg-emerald px-5 py-2.5 text-sm font-semibold text-white shadow-sm hover:bg-emerald-dark transition-colors"
-            >
-              Check Your 1099-DA Free
-            </Link>
+          <div className="hidden md:flex items-center gap-3">
+            {isSignedIn ? (
+              <>
+                <Link
+                  href="/dashboard"
+                  className="text-sm font-medium text-slate hover:text-charcoal transition-colors"
+                >
+                  Dashboard
+                </Link>
+                <Link
+                  href="/upload"
+                  className="inline-flex items-center rounded-btn bg-emerald px-5 py-2.5 text-sm font-semibold text-white shadow-sm hover:bg-emerald-dark transition-colors"
+                >
+                  New Analysis
+                </Link>
+              </>
+            ) : (
+              <>
+                <button
+                  onClick={signIn}
+                  className="text-sm font-medium text-slate hover:text-charcoal transition-colors"
+                >
+                  Sign In
+                </button>
+                <Link
+                  href="/upload"
+                  className="inline-flex items-center rounded-btn bg-emerald px-5 py-2.5 text-sm font-semibold text-white shadow-sm hover:bg-emerald-dark transition-colors"
+                >
+                  Check Your 1099-DA Free
+                </Link>
+              </>
+            )}
           </div>
 
           {/* Mobile menu button */}
@@ -122,13 +151,40 @@ export default function Header() {
                 {link.label}
               </a>
             ))}
-            <Link
-              href="/upload"
-              className="block w-full text-center rounded-btn bg-emerald px-5 py-2.5 text-sm font-semibold text-white shadow-sm hover:bg-emerald-dark transition-colors"
-              onClick={() => setMobileOpen(false)}
-            >
-              Check Your 1099-DA Free
-            </Link>
+            {isSignedIn ? (
+              <>
+                <Link
+                  href="/dashboard"
+                  className="block px-2 py-2 text-sm font-medium text-slate hover:text-charcoal transition-colors"
+                  onClick={() => setMobileOpen(false)}
+                >
+                  Dashboard
+                </Link>
+                <Link
+                  href="/upload"
+                  className="block w-full text-center rounded-btn bg-emerald px-5 py-2.5 text-sm font-semibold text-white shadow-sm hover:bg-emerald-dark transition-colors"
+                  onClick={() => setMobileOpen(false)}
+                >
+                  New Analysis
+                </Link>
+              </>
+            ) : (
+              <>
+                <button
+                  onClick={() => { signIn(); setMobileOpen(false); }}
+                  className="block w-full text-left px-2 py-2 text-sm font-medium text-slate hover:text-charcoal transition-colors"
+                >
+                  Sign In
+                </button>
+                <Link
+                  href="/upload"
+                  className="block w-full text-center rounded-btn bg-emerald px-5 py-2.5 text-sm font-semibold text-white shadow-sm hover:bg-emerald-dark transition-colors"
+                  onClick={() => setMobileOpen(false)}
+                >
+                  Check Your 1099-DA Free
+                </Link>
+              </>
+            )}
           </div>
         )}
       </div>

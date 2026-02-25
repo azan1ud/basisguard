@@ -31,6 +31,11 @@ import {
   setDoc,
   updateDoc,
   serverTimestamp,
+  collection,
+  getDocs,
+  query,
+  orderBy,
+  limit,
 } from 'firebase/firestore';
 import { UserSession, PricingTier } from './types';
 
@@ -229,4 +234,18 @@ export async function getAnalysisResults(
   const snapshot = await getDoc(analysisRef);
 
   return snapshot.exists() ? (snapshot.data() as Record<string, unknown>) : null;
+}
+
+/**
+ * Fetch up to 20 most recent analyses for a user.
+ */
+export async function getUserAnalyses(
+  uid: string,
+): Promise<Array<Record<string, unknown> & { id: string }>> {
+  const db = getFirebaseFirestore();
+  const col = collection(db, 'users', uid, 'analyses');
+  const q = query(col, orderBy('createdAt', 'desc'), limit(20));
+  const snapshot = await getDocs(q);
+
+  return snapshot.docs.map((d) => ({ id: d.id, ...d.data() }));
 }
