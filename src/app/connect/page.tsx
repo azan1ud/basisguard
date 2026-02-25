@@ -51,13 +51,6 @@ const exchanges: Exchange[] = [
   },
 ];
 
-interface ConnectionState {
-  connected: boolean;
-  loading: boolean;
-  apiKey: string;
-  apiSecret: string;
-}
-
 export default function ConnectPage() {
   const {
     connectedExchanges,
@@ -67,60 +60,9 @@ export default function ConnectPage() {
     confirmConnect,
   } = useApp();
 
-  const [connections, setConnections] = useState<Record<string, ConnectionState>>(
-    () => {
-      const initial: Record<string, ConnectionState> = {};
-      exchanges.forEach((ex) => {
-        initial[ex.id] = {
-          connected: false,
-          loading: false,
-          apiKey: "",
-          apiSecret: "",
-        };
-      });
-      return initial;
-    }
-  );
-
   const [csvUploaded, setCsvUploaded] = useState(false);
   const [csvParseCount, setCsvParseCount] = useState(0);
   const [csvParseError, setCsvParseError] = useState<string | null>(null);
-
-  const updateConnection = (id: string, updates: Partial<ConnectionState>) => {
-    setConnections((prev) => ({
-      ...prev,
-      [id]: { ...prev[id], ...updates },
-    }));
-  };
-
-  const handleOAuthConnect = async (exchangeId: string) => {
-    updateConnection(exchangeId, { loading: true });
-    // Simulate OAuth flow
-    await new Promise((resolve) => setTimeout(resolve, 2000));
-    updateConnection(exchangeId, { connected: true, loading: false });
-
-    // Find the exchange name and store in shared context
-    const exchange = exchanges.find((ex) => ex.id === exchangeId);
-    if (exchange) {
-      addConnectedExchange(exchange.name);
-    }
-  };
-
-  const handleApiKeyConnect = async (exchangeId: string) => {
-    const conn = connections[exchangeId];
-    if (!conn.apiKey.trim() || !conn.apiSecret.trim()) return;
-
-    updateConnection(exchangeId, { loading: true });
-    // Simulate API key validation
-    await new Promise((resolve) => setTimeout(resolve, 1500));
-    updateConnection(exchangeId, { connected: true, loading: false });
-
-    // Find the exchange name and store in shared context
-    const exchange = exchanges.find((ex) => ex.id === exchangeId);
-    if (exchange) {
-      addConnectedExchange(exchange.name);
-    }
-  };
 
   const handleCsvUpload = (file: File) => {
     setCsvParseError(null);
@@ -233,16 +175,10 @@ export default function ConnectPage() {
 
         {/* Exchange cards grid */}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
-          {exchanges.map((exchange) => {
-            const conn = connections[exchange.id];
-
-            return (
+          {exchanges.map((exchange) => (
               <div
                 key={exchange.id}
-                className={`
-                  bg-white rounded-card shadow-card p-6 transition-shadow
-                  ${conn.connected ? "ring-2 ring-emerald/30" : "hover:shadow-card-hover"}
-                `}
+                className="bg-white rounded-card shadow-card p-6 transition-shadow hover:shadow-card-hover"
               >
                 {/* Exchange header */}
                 <div className="flex items-center gap-3 mb-5">
@@ -261,139 +197,21 @@ export default function ConnectPage() {
                     </h3>
                     <p className="text-xs text-slate">
                       {exchange.authType === "oauth"
-                        ? "Connect with OAuth"
+                        ? "OAuth Integration"
                         : "API Key Authentication"}
                     </p>
                   </div>
-                  {conn.connected && (
-                    <div className="flex items-center gap-1.5 text-emerald">
-                      <svg
-                        width="20"
-                        height="20"
-                        viewBox="0 0 24 24"
-                        fill="none"
-                        stroke="currentColor"
-                        strokeWidth="2.5"
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                      >
-                        <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14" />
-                        <polyline points="22 4 12 14.01 9 11.01" />
-                      </svg>
-                      <span className="text-xs font-semibold">Connected</span>
-                    </div>
-                  )}
                 </div>
 
-                {/* Connection form */}
-                {!conn.connected && (
-                  <div>
-                    {exchange.authType === "oauth" ? (
-                      <button
-                        type="button"
-                        onClick={() => handleOAuthConnect(exchange.id)}
-                        disabled={conn.loading}
-                        className="w-full inline-flex items-center justify-center gap-2 rounded-btn bg-emerald px-4 py-2.5 text-sm font-semibold text-white hover:bg-emerald-dark transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
-                      >
-                        {conn.loading ? (
-                          <>
-                            <div className="h-4 w-4 rounded-full border-2 border-white/30 border-t-white animate-spin" />
-                            Connecting...
-                          </>
-                        ) : (
-                          <>
-                            <svg
-                              width="16"
-                              height="16"
-                              viewBox="0 0 24 24"
-                              fill="none"
-                              stroke="currentColor"
-                              strokeWidth="2"
-                              strokeLinecap="round"
-                              strokeLinejoin="round"
-                            >
-                              <path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4" />
-                              <polyline points="10 17 15 12 10 7" />
-                              <line x1="15" y1="12" x2="3" y2="12" />
-                            </svg>
-                            Connect with OAuth
-                          </>
-                        )}
-                      </button>
-                    ) : (
-                      <div className="space-y-3">
-                        <div>
-                          <label
-                            htmlFor={`${exchange.id}-key`}
-                            className="block text-xs font-medium text-charcoal mb-1"
-                          >
-                            API Key
-                          </label>
-                          <input
-                            id={`${exchange.id}-key`}
-                            type="text"
-                            value={conn.apiKey}
-                            onChange={(e) =>
-                              updateConnection(exchange.id, { apiKey: e.target.value })
-                            }
-                            placeholder="Enter your API key"
-                            className="w-full rounded-btn border border-gray-300 bg-white px-3 py-2 text-sm text-charcoal font-mono placeholder:font-sans placeholder:text-slate/50 focus:border-emerald focus:outline-none focus:ring-2 focus:ring-emerald/20"
-                          />
-                        </div>
-                        <div>
-                          <label
-                            htmlFor={`${exchange.id}-secret`}
-                            className="block text-xs font-medium text-charcoal mb-1"
-                          >
-                            API Secret
-                          </label>
-                          <input
-                            id={`${exchange.id}-secret`}
-                            type="password"
-                            value={conn.apiSecret}
-                            onChange={(e) =>
-                              updateConnection(exchange.id, {
-                                apiSecret: e.target.value,
-                              })
-                            }
-                            placeholder="Enter your API secret"
-                            className="w-full rounded-btn border border-gray-300 bg-white px-3 py-2 text-sm text-charcoal font-mono placeholder:font-sans placeholder:text-slate/50 focus:border-emerald focus:outline-none focus:ring-2 focus:ring-emerald/20"
-                          />
-                        </div>
-                        <button
-                          type="button"
-                          onClick={() => handleApiKeyConnect(exchange.id)}
-                          disabled={
-                            conn.loading ||
-                            !conn.apiKey.trim() ||
-                            !conn.apiSecret.trim()
-                          }
-                          className="w-full inline-flex items-center justify-center gap-2 rounded-btn bg-navy px-4 py-2.5 text-sm font-semibold text-white hover:bg-navy-light transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
-                        >
-                          {conn.loading ? (
-                            <>
-                              <div className="h-4 w-4 rounded-full border-2 border-white/30 border-t-white animate-spin" />
-                              Verifying...
-                            </>
-                          ) : (
-                            "Connect"
-                          )}
-                        </button>
-                      </div>
-                    )}
-                  </div>
-                )}
-
-                {/* Connected state content */}
-                {conn.connected && (
-                  <p className="text-xs text-slate">
-                    Successfully connected. We will pull your transaction history during
-                    the analysis step.
+                {/* Coming soon notice */}
+                <div className="rounded-btn bg-gray-50 border border-gray-200 p-4 text-center">
+                  <p className="text-sm font-medium text-slate">Coming Soon</p>
+                  <p className="text-xs text-slate/70 mt-1">
+                    Direct {exchange.name} integration is under development. Use CSV upload below for now.
                   </p>
-                )}
+                </div>
               </div>
-            );
-          })}
+          ))}
         </div>
 
         {/* CSV Upload section */}
