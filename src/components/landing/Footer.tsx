@@ -14,6 +14,9 @@ const footerLinks = {
   resources: [
     { label: "IRS Form 8949 Guide", href: "/guides/form-8949" },
     { label: "Understanding 1099-DA", href: "/guides/1099-da" },
+    { label: "Coinbase 1099-DA Guide", href: "/guides/coinbase-1099-da" },
+    { label: "Cost Basis Calculator", href: "/tools/calculator" },
+    { label: "Blog", href: "/blog/1099-da-wrong-cost-basis" },
     { label: "Contact Support", href: "/support" },
   ],
 };
@@ -143,7 +146,7 @@ export default function Footer() {
             <p className="text-xs text-white/40">
               Built by{" "}
               <a
-                href="https://avantware.com"
+                href="https://avantware.uk"
                 target="_blank"
                 rel="noopener noreferrer"
                 className="text-white/50 hover:text-white/70 transition-colors"
